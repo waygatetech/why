@@ -17,7 +17,11 @@ func newCheckCmd() *cobra.Command {
 uncommitted and untracked files. Fails when an existing decision's decided_by
 or ruling changed, or a new decision claims human provenance without having
 been recorded by why record under the tix approve hook. Meant for the tix
-done hook.`,
+done hook.
+
+Receipts live in .git/why/approved and are never pushed, so run check in the
+clone that recorded the decisions. On CI or another clone, every human
+decision on the branch is reported as unconfirmed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := decisionsDir()
