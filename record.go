@@ -63,6 +63,13 @@ from a decision file on stdin.`,
 				}
 				ids = append(ids, *d)
 			}
+			for _, d := range todo {
+				for _, id := range d.Supersedes {
+					if !slices.ContainsFunc(ids, func(e decision.Decision) bool { return e.ID == id }) {
+						return fmt.Errorf("recording decision %s: supersedes unknown decision %s", d.ID, id)
+					}
+				}
+			}
 			confirmed, err := confirmHuman(cmd, todo)
 			if err != nil {
 				return err
@@ -95,6 +102,7 @@ from a decision file on stdin.`,
 	f.StringVar(&d.Question, "question", "", "question that was decided")
 	f.StringVar(&d.Ruling, "ruling", "", "the ruling (omit to read a decision file from stdin)")
 	f.StringVar(&d.Why, "why", "", "reasoning behind the ruling")
+	f.StringSliceVar(&d.Supersedes, "supersedes", nil, "id of a decision this one replaces (repeatable)")
 	f.StringVar(&d.DecidedBy, "decided-by", decision.Agent, "who made the ruling: human, agent-proposed-human-approved or agent; the first two require confirming on a terminal, else agent is written")
 	cmd.MarkFlagsMutuallyExclusive("from-plan", "ruling")
 	return cmd
@@ -121,7 +129,7 @@ func fromPlanFile(path string, existing []decision.Decision, decidedBy string) (
 		}
 		out = append(out, decision.Decision{
 			Ticket: p.Ticket, Concepts: concepts, DecidedBy: decidedBy,
-			Question: e.Q, Ruling: e.Recommend, Why: e.Why,
+			Question: e.Q, Ruling: e.Recommend, Why: e.Why, Supersedes: e.Supersedes,
 		})
 	}
 	return out, nil
@@ -148,6 +156,9 @@ func single(cmd *cobra.Command, flags decision.Decision) ([]decision.Decision, e
 	}
 	if d.DecidedBy == "" {
 		d.DecidedBy = flags.DecidedBy
+	}
+	if d.Supersedes == nil {
+		d.Supersedes = flags.Supersedes
 	}
 	return []decision.Decision{d}, nil
 }

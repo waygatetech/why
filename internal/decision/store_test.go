@@ -41,6 +41,42 @@ func TestActive(t *testing.T) {
 	}
 }
 
+func TestChain(t *testing.T) {
+	// a <- b <- c, and d supersedes both c and a; e is unrelated. x is a cycle.
+	ds := []Decision{
+		{ID: "a"}, {ID: "b", Supersedes: []string{"a"}}, {ID: "c", Supersedes: []string{"b", "missing"}},
+		{ID: "d", Supersedes: []string{"c", "a"}}, {ID: "e"}, {ID: "x", Supersedes: []string{"x"}},
+	}
+	ids := func(ds []Decision) []string {
+		var out []string
+		for _, d := range ds {
+			out = append(out, d.ID)
+		}
+		return out
+	}
+	tests := []struct {
+		id           string
+		older, newer []string
+	}{
+		{"a", nil, []string{"b", "d", "c"}},
+		{"c", []string{"b", "a"}, []string{"d"}},
+		{"d", []string{"c", "a", "b"}, nil},
+		{"e", nil, nil},
+		{"x", nil, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			older, newer := Chain(ds, tt.id)
+			if got := ids(older); !reflect.DeepEqual(got, tt.older) {
+				t.Errorf("older = %v, want %v", got, tt.older)
+			}
+			if got := ids(newer); !reflect.DeepEqual(got, tt.newer) {
+				t.Errorf("newer = %v, want %v", got, tt.newer)
+			}
+		})
+	}
+}
+
 func TestWriteLoad(t *testing.T) {
 	dir := t.TempDir() + "/decisions"
 	if ds, err := Load(dir); err != nil || ds != nil {

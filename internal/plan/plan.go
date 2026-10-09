@@ -12,10 +12,11 @@ import (
 // Entry is one decision in a plan. tix owns the schema; once the plan is
 // approved, Recommend holds the human's ruling.
 type Entry struct {
-	Q         string   `yaml:"q"`
-	Options   []string `yaml:"options"`
-	Recommend string   `yaml:"recommend"`
-	Why       string   `yaml:"why"`
+	Q          string   `yaml:"q"`
+	Options    []string `yaml:"options"`
+	Recommend  string   `yaml:"recommend"`
+	Why        string   `yaml:"why"`
+	Supersedes []string `yaml:"supersedes"`
 }
 
 // Plan is the subset of plan frontmatter why cares about. Other keys are

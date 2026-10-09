@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -46,6 +47,44 @@ func Active(ds []Decision) []Decision {
 		}
 	}
 	return out
+}
+
+// Chain returns the decisions id transitively supersedes (older) and those
+// that transitively supersede it (newer), nearest first. Ids with no
+// decision in ds are skipped.
+func Chain(ds []Decision, id string) (older, newer []Decision) {
+	byID := map[string]Decision{}
+	for _, d := range ds {
+		byID[d.ID] = d
+	}
+	walk := func(next func(Decision) []string) []Decision {
+		var out []Decision
+		seen := map[string]bool{id: true}
+		queue := next(byID[id])
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			d, ok := byID[cur]
+			if seen[cur] || !ok {
+				continue
+			}
+			seen[cur] = true
+			out = append(out, d)
+			queue = append(queue, next(d)...)
+		}
+		return out
+	}
+	older = walk(func(d Decision) []string { return d.Supersedes })
+	newer = walk(func(d Decision) []string {
+		var ids []string
+		for _, e := range ds {
+			if slices.Contains(e.Supersedes, d.ID) {
+				ids = append(ids, e.ID)
+			}
+		}
+		return ids
+	})
+	return older, newer
 }
 
 // NextID returns <ticket>-<n>, one past the highest n already used for ticket.

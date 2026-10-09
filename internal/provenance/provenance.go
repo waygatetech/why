@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/waygatetech/why/internal/decision"
@@ -97,8 +98,8 @@ func receipts(gitDir string) (map[string]bool, error) {
 
 // Check compares root/decisions/*.md with the merge base of base and HEAD.
 // It returns one violation per existing decision whose decided_by or ruling
-// changed, and per new decision claiming human provenance without a receipt
-// for its exact content.
+// changed, per new decision claiming human provenance without a receipt
+// for its exact content, and per non-human decision superseding a human one.
 func Check(ctx context.Context, root, base string) ([]string, error) {
 	mb, err := git(ctx, root, "merge-base", base, "HEAD")
 	if err != nil {
@@ -126,6 +127,7 @@ func Check(ctx context.Context, root, base string) ([]string, error) {
 		return nil, fmt.Errorf("listing decisions: %w", err)
 	}
 	var violations []string
+	parsed := map[string]decision.Decision{}
 	for _, p := range paths {
 		rel := "decisions/" + filepath.Base(p)
 		data, err := os.ReadFile(p)
@@ -137,6 +139,7 @@ func Check(ctx context.Context, root, base string) ([]string, error) {
 			violations = append(violations, fmt.Sprintf("%s: %v", rel, err))
 			continue
 		}
+		parsed[cur.ID] = cur
 		if !inBase[rel] {
 			if decision.IsHuman(cur.DecidedBy) && !ok[hash(data)] {
 				violations = append(violations, fmt.Sprintf("%s: new decision claims decided_by %s without a confirmed receipt", rel, cur.DecidedBy))
@@ -158,6 +161,17 @@ func Check(ctx context.Context, root, base string) ([]string, error) {
 			violations = append(violations, fmt.Sprintf("%s: ruling changed", rel))
 		}
 	}
+	for _, cur := range parsed {
+		if decision.IsHuman(cur.DecidedBy) {
+			continue
+		}
+		for _, id := range cur.Supersedes {
+			if old, ok := parsed[id]; ok && decision.IsHuman(old.DecidedBy) {
+				violations = append(violations, fmt.Sprintf("decisions/%s.md: decided_by %s supersedes %s, a %s ruling", cur.ID, cur.DecidedBy, id, old.DecidedBy))
+			}
+		}
+	}
+	slices.Sort(violations)
 	return violations, nil
 }
 

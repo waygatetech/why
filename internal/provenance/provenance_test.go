@@ -101,6 +101,19 @@ func TestCheck(t *testing.T) {
 			d.Ruling = "D."
 			write(t, root, d)
 		}, "without a confirmed receipt"},
+		{"agent supersedes human", func(t *testing.T, root, gitDir string) {
+			write(t, root, decision.Decision{ID: "why-2-1", DecidedBy: decision.Agent, Ruling: "C.", Supersedes: []string{"why-1-1"}})
+		}, "supersedes why-1-1"},
+		{"human supersedes human", func(t *testing.T, root, gitDir string) {
+			p := write(t, root, decision.Decision{ID: "why-2-1", DecidedBy: decision.Human, Ruling: "C.", Supersedes: []string{"why-1-1"}})
+			if err := AddReceipt(gitDir, "why-2-1", p); err != nil {
+				t.Fatal(err)
+			}
+		}, ""},
+		{"agent supersedes agent", func(t *testing.T, root, gitDir string) {
+			write(t, root, decision.Decision{ID: "why-2-1", DecidedBy: decision.Agent, Ruling: "C."})
+			write(t, root, decision.Decision{ID: "why-2-2", DecidedBy: decision.Agent, Ruling: "D.", Supersedes: []string{"why-2-1"}})
+		}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

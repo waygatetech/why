@@ -14,6 +14,7 @@ import (
 func newListCmd() *cobra.Command {
 	var concepts []string
 	var format string
+	var all bool
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "Print active (non-superseded) decisions",
@@ -27,16 +28,20 @@ func newListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			all, err := decision.Load(dir)
+			ds, err := decision.Load(dir)
 			if err != nil {
 				return err
 			}
-			var ds []decision.Decision
-			for _, d := range decision.Active(all) {
+			if !all {
+				ds = decision.Active(ds)
+			}
+			var out []decision.Decision
+			for _, d := range ds {
 				if len(concepts) == 0 || slices.ContainsFunc(d.Concepts, func(c string) bool { return slices.Contains(concepts, c) }) {
-					ds = append(ds, d)
+					out = append(out, d)
 				}
 			}
+			ds = out
 			slices.SortFunc(ds, func(a, b decision.Decision) int {
 				return cmp.Or(cmp.Compare(a.Date, b.Date), cmp.Compare(a.ID, b.ID))
 			})
@@ -47,6 +52,7 @@ func newListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringSliceVar(&concepts, "concept", nil, "only decisions tagged with this concept (repeatable)")
+	cmd.Flags().BoolVar(&all, "all", false, "include superseded decisions")
 	cmd.Flags().StringVar(&format, "format", "text", "output format: text or md")
 	return cmd
 }
