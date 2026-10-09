@@ -21,3 +21,4 @@ jobs:
       - uses: dominikh/staticcheck-action@v1
         with:
           install-go: false
+          version: "2025.1.1" # newer releases require a newer Go than go.mod
