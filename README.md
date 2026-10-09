@@ -97,6 +97,11 @@ run `why check` there, not in CI.
 This guards against accidental upgrades, not a determined agent with shell
 access — it could set `TIX_HOOK` or forge a receipt itself.
 
+## `plans/`
+
+The `plans/` directory holds the tix plan files this repo was built from,
+kept as history. You don't need it to use `why`.
+
 ## License
 
 [MIT](LICENSE)
