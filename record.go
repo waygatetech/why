@@ -28,7 +28,14 @@ entry's recommend is the ruling. Entries already recorded for the ticket
 (same question) are skipped.
 
 Otherwise one decision is taken from flags, or, when --ruling is not set,
-from a decision file on stdin.`,
+from a decision file on stdin.
+
+decided_by human or agent-proposed-human-approved is written only when run
+from the tix approve hook (TIX_HOOK=approve); anywhere else it is recorded as
+agent. The human gesture is the Claude Code permission prompt, so configure:
+  ask:  Bash(tix approve:*)
+  deny: Bash(why record:*--decided-by human*),
+        Bash(why record:*--decided-by agent-proposed-human-approved*)`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := decisionsDir()
@@ -70,10 +77,7 @@ from a decision file on stdin.`,
 					}
 				}
 			}
-			confirmed, err := confirmHuman(cmd, todo)
-			if err != nil {
-				return err
-			}
+			confirmed := approvedByHuman(cmd, todo)
 			var gitDir string
 			if confirmed {
 				if gitDir, err = provenance.GitDir(cmd.Context(), filepath.Dir(dir)); err != nil {
@@ -103,7 +107,7 @@ from a decision file on stdin.`,
 	f.StringVar(&d.Ruling, "ruling", "", "the ruling (omit to read a decision file from stdin)")
 	f.StringVar(&d.Why, "why", "", "reasoning behind the ruling")
 	f.StringSliceVar(&d.Supersedes, "supersedes", nil, "id of a decision this one replaces (repeatable)")
-	f.StringVar(&d.DecidedBy, "decided-by", decision.Agent, "who made the ruling: human, agent-proposed-human-approved or agent; the first two require confirming on a terminal, else agent is written")
+	f.StringVar(&d.DecidedBy, "decided-by", decision.Agent, "who made the ruling: human, agent-proposed-human-approved or agent; the first two are kept only under the tix approve hook, else agent is written")
 	cmd.MarkFlagsMutuallyExclusive("from-plan", "ruling")
 	return cmd
 }
@@ -163,32 +167,22 @@ func single(cmd *cobra.Command, flags decision.Decision) ([]decision.Decision, e
 	return []decision.Decision{d}, nil
 }
 
-// confirmHuman asks on the controlling terminal before writing human
-// provenance. Without one (agents, headless runs) every decision is
-// downgraded to agent. It reports whether a human confirmed.
-func confirmHuman(cmd *cobra.Command, ds []decision.Decision) (bool, error) {
-	if !slices.ContainsFunc(ds, func(d decision.Decision) bool { return decision.IsHuman(d.DecidedBy) }) {
-		return false, nil
+// approvedByHuman reports whether why runs inside the tix approve hook, the
+// only place human provenance may be written; the human gesture is the
+// harness permission prompt on tix approve. Elsewhere every human decision
+// is downgraded to agent. An agent can set TIX_HOOK itself; this stops
+// accidental upgrades, not determined ones.
+func approvedByHuman(cmd *cobra.Command, ds []decision.Decision) bool {
+	if os.Getenv("TIX_HOOK") == "approve" {
+		return true
 	}
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "why: no terminal to confirm human provenance; recording as %s\n", decision.Agent)
-		for i := range ds {
-			if decision.IsHuman(ds[i].DecidedBy) {
-				ds[i].DecidedBy = decision.Agent
-			}
+	for i := range ds {
+		if decision.IsHuman(ds[i].DecidedBy) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "why: %s: human provenance is only written from the tix approve hook; recording as %s\n", ds[i].ID, decision.Agent)
+			ds[i].DecidedBy = decision.Agent
 		}
-		return false, nil
 	}
-	defer tty.Close()
-	ok, err := provenance.Confirm(tty, ds)
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, errors.New("recording decision: provenance not confirmed; nothing written")
-	}
-	return true, nil
+	return false
 }
 
 // decisionsDir is <repo root>/decisions for the working directory.

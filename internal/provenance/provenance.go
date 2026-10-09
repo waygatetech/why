@@ -1,19 +1,17 @@
-// Package provenance keeps decided_by honest: human provenance needs an
-// interactive confirmation, which leaves a receipt that Check accepts.
+// Package provenance keeps decided_by honest: human provenance is written
+// only under the tix approve hook, which leaves a receipt that Check accepts.
 //
 // This is soft against an agent with shell access that forges a receipt on
 // purpose; it stops accidental upgrades.
 package provenance
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -23,20 +21,6 @@ import (
 
 	"github.com/waygatetech/why/internal/decision"
 )
-
-// Confirm lists ds on tty and asks the human to vouch for their provenance.
-func Confirm(tty io.ReadWriter, ds []decision.Decision) (bool, error) {
-	for _, d := range ds {
-		fmt.Fprintf(tty, "%s [%s]\n  Q: %s\n  R: %s\n", d.ID, d.DecidedBy, d.Question, d.Ruling)
-	}
-	fmt.Fprint(tty, "Record these with the provenance shown? [y/N] ")
-	line, err := bufio.NewReader(tty).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, fmt.Errorf("reading confirmation: %w", err)
-	}
-	answer := strings.ToLower(strings.TrimSpace(line))
-	return answer == "y" || answer == "yes", nil
-}
 
 // GitDir returns the absolute git common dir for the repo at root, shared by
 // all worktrees and never part of a diff.

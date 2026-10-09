@@ -16,7 +16,8 @@ func newCheckCmd() *cobra.Command {
 		Long: `Compare decisions/ with the merge base of --base and HEAD, including
 uncommitted and untracked files. Fails when an existing decision's decided_by
 or ruling changed, or a new decision claims human provenance without having
-been confirmed on a terminal by why record. Meant for the tix done hook.`,
+been recorded by why record under the tix approve hook. Meant for the tix
+done hook.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := decisionsDir()

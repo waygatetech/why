@@ -1,9 +1,7 @@
 package provenance
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,28 +10,6 @@ import (
 
 	"github.com/waygatetech/why/internal/decision"
 )
-
-func TestConfirm(t *testing.T) {
-	tests := []struct {
-		in   string
-		want bool
-	}{{"y\n", true}, {"YES\n", true}, {"n\n", false}, {"\n", false}, {"", false}}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			rw := struct {
-				io.Reader
-				io.Writer
-			}{strings.NewReader(tt.in), &bytes.Buffer{}}
-			got, err := Confirm(rw, []decision.Decision{{ID: "why-1-1", DecidedBy: decision.Human}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != tt.want {
-				t.Errorf("Confirm(%q) = %v, want %v", tt.in, got, tt.want)
-			}
-		})
-	}
-}
 
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
