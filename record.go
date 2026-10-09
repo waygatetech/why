@@ -68,6 +68,15 @@ agent. The human gesture is the Claude Code permission prompt, so configure:
 				if d.Date == "" {
 					d.Date = today
 				}
+				// Check every id before writing any, so a collision leaves nothing half-recorded.
+				if slices.ContainsFunc(ids, func(e decision.Decision) bool { return e.ID == d.ID }) {
+					return fmt.Errorf("recording decision %s: already exists", d.ID)
+				}
+				if _, err := os.Stat(filepath.Join(dir, d.ID+".md")); err == nil {
+					return fmt.Errorf("recording decision %s: already exists", d.ID)
+				} else if !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("checking decision %s: %w", d.ID, err)
+				}
 				ids = append(ids, *d)
 			}
 			for _, d := range todo {

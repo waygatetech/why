@@ -117,3 +117,51 @@ func TestRecordAndList(t *testing.T) {
 		t.Errorf("record --supersedes unknown id error = %v", err)
 	}
 }
+
+func TestRecordCollisionWritesNothing(t *testing.T) {
+	tests := []struct {
+		name  string
+		stdin string
+		args  []string
+	}{
+		// decisions/why-7-2.md holds another id, so the plan's second id collides on disk.
+		{"from plan", "", []string{"record", "--from-plan", "plan.md"}},
+		{"stdin id recorded", "---\nid: other-1\nticket: why-7\n---\n## Ruling\nR.\n", []string{"record"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			if out, err := exec.Command("git", "init", "-q", "-b", "main", root).CombinedOutput(); err != nil {
+				t.Fatalf("git init: %v\n%s", err, out)
+			}
+			t.Setenv("TIX_HOOK", "")
+			dir := filepath.Join(root, "decisions")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "plan.md"), []byte(testPlan), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "why-7-2.md"), []byte("---\nid: other-1\nticket: other\n---\n## Ruling\nR.\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(root)
+
+			cmd := newRootCmd()
+			cmd.SetArgs(tt.args)
+			cmd.SetIn(strings.NewReader(tt.stdin))
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "already exists") {
+				t.Errorf("why %v error = %v, want already exists", tt.args, err)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 {
+				t.Errorf("decisions/ has %d files, want only the pre-existing one", len(entries))
+			}
+		})
+	}
+}
