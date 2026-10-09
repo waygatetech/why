@@ -83,10 +83,10 @@ func TestRecordAndList(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"all active", []string{"list"}, "why-10-1  []  R.\nwhy-7-1  [cli,store]  a\nwhy-7-2  [cli,store]  d\nwhy-8-2  [other]  R2.\nwhy-9-1  []  R.\n"},
-		{"by concept", []string{"list", "--concept", "store"}, "why-7-1  [cli,store]  a\nwhy-7-2  [cli,store]  d\n"},
+		{"all active", []string{"list"}, "why-10-1  []  human  R.\nwhy-7-1  [cli,store]  agent  a\nwhy-7-2  [cli,store]  agent  d\nwhy-8-2  [other]  agent  R2.\nwhy-9-1  []  agent  R.\n"},
+		{"by concept", []string{"list", "--concept", "store"}, "why-7-1  [cli,store]  agent  a\nwhy-7-2  [cli,store]  agent  d\n"},
 		{"markdown", []string{"list", "--concept", "other", "--format", "md"}, "## why-8-2: \n\n**Ruling:** R2.\n\n**Why:** \n\n"},
-		{"all", []string{"list", "--all", "--concept", "other"}, "why-8-1  [other]  R.\nwhy-8-2  [other]  R2.\n"},
+		{"all", []string{"list", "--all", "--concept", "other"}, "why-8-1  [other]  agent  R.\nwhy-8-2  [other]  agent  R2.\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

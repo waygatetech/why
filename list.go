@@ -60,7 +60,7 @@ func newListCmd() *cobra.Command {
 func writeText(w io.Writer, ds []decision.Decision) error {
 	for _, d := range ds {
 		ruling, _, _ := strings.Cut(d.Ruling, "\n")
-		if _, err := fmt.Fprintf(w, "%s  [%s]  %s\n", d.ID, strings.Join(d.Concepts, ","), ruling); err != nil {
+		if _, err := fmt.Fprintf(w, "%s  [%s]  %s  %s\n", d.ID, strings.Join(d.Concepts, ","), d.DecidedBy, ruling); err != nil {
 			return fmt.Errorf("writing list: %w", err)
 		}
 	}
