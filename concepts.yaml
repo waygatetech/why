@@ -1,0 +1,9 @@
+# Concepts this repo defines. tix plan rejects plan concepts missing here
+# unless the plan lists them in new_concepts.
+
+cli:
+  module: main.go
+repo-root:
+  module: internal/repo
+decision-format:
+  module: internal/decision
