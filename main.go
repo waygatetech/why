@@ -34,6 +34,7 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging")
 	cmd.SetVersionTemplate(fmt.Sprintf("why %s\n", cmd.Version))
+	cmd.AddCommand(newRecordCmd(), newListCmd())
 	return cmd
 }
 

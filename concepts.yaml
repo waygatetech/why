@@ -7,3 +7,7 @@ repo-root:
   module: internal/repo
 decision-format:
   module: internal/decision
+decision-store:
+  module: internal/decision
+plan-import:
+  module: internal/plan
