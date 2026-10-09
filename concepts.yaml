@@ -11,3 +11,5 @@ decision-store:
   module: internal/decision
 plan-import:
   module: internal/plan
+decision-provenance:
+  module: internal/provenance

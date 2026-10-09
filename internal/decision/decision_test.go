@@ -16,14 +16,14 @@ func TestRoundTrip(t *testing.T) {
 			name: "full",
 			d: Decision{
 				ID: "d-1", Ticket: "why-590", Concepts: []string{"decision-format"},
-				Date: "2026-10-08", DecidedBy: "brian", Supersedes: []string{"d-0"},
+				Date: "2026-10-08", DecidedBy: Human, Supersedes: []string{"d-0"},
 				Question: "Where does prose live?", Ruling: "Markdown sections.",
 				Why: "Readable in review.\n\nSecond paragraph.",
 			},
 		},
 		{
 			name: "minimal",
-			d:    Decision{ID: "d-2", Date: "2026-10-08", DecidedBy: "brian", Ruling: "Yes."},
+			d:    Decision{ID: "d-2", Date: "2026-10-08", DecidedBy: Agent, Ruling: "Yes."},
 		},
 	}
 	for _, tt := range tests {
@@ -53,6 +53,7 @@ func TestParseErrors(t *testing.T) {
 		{"unknown section", "---\nid: x\n---\n## Notes\nx\n", "unknown section"},
 		{"duplicate section", "---\nid: x\n---\n## Why\na\n## Why\nb\n", "duplicate section"},
 		{"text outside section", "---\nid: x\n---\nstray\n## Why\na\n", "outside a section"},
+		{"unknown decided_by", "---\nid: x\ndecided_by: brian\n---\n", "invalid decided_by"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

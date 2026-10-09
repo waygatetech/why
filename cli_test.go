@@ -56,13 +56,22 @@ func TestRecordAndList(t *testing.T) {
 	}
 	run(t, "", "record", "--ticket", "why-8", "--concept", "other", "--question", "Q?", "--ruling", "R.", "--why", "W.")
 	run(t, "---\nticket: why-8\nconcepts: [other]\nsupersedes: [why-8-1]\n---\n## Ruling\nR2.\n", "record")
+	// Tests have no controlling terminal, so human provenance is downgraded.
+	run(t, "", "record", "--ticket", "why-9", "--ruling", "R.", "--decided-by", "human")
+	data, err := os.ReadFile(filepath.Join(root, "decisions", "why-9-1.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "decided_by: agent\n") {
+		t.Errorf("record --decided-by human without a TTY wrote:\n%s\nwant decided_by: agent", data)
+	}
 
 	tests := []struct {
 		name string
 		args []string
 		want string
 	}{
-		{"all active", []string{"list"}, "why-7-1  [cli,store]  a\nwhy-7-2  [cli,store]  d\nwhy-8-2  [other]  R2.\n"},
+		{"all active", []string{"list"}, "why-7-1  [cli,store]  a\nwhy-7-2  [cli,store]  d\nwhy-8-2  [other]  R2.\nwhy-9-1  []  R.\n"},
 		{"by concept", []string{"list", "--concept", "store"}, "why-7-1  [cli,store]  a\nwhy-7-2  [cli,store]  d\n"},
 		{"markdown", []string{"list", "--concept", "other", "--format", "md"}, "## why-8-2: \n\n**Ruling:** R2.\n\n**Why:** \n\n"},
 	}

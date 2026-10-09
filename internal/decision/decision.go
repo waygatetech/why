@@ -8,7 +8,7 @@
 //	ticket: why-590
 //	concepts: [decision-format]
 //	date: 2026-10-08
-//	decided_by: brian
+//	decided_by: human
 //	supersedes: [...]
 //	---
 //
@@ -48,13 +48,33 @@ type Decision struct {
 	Why      string `yaml:"-"`
 }
 
+// Provenance values for DecidedBy.
+const (
+	Human         = "human"
+	AgentApproved = "agent-proposed-human-approved"
+	Agent         = "agent"
+)
+
+// IsHuman reports whether decidedBy claims a human ruled.
+func IsHuman(decidedBy string) bool {
+	return decidedBy == Human || decidedBy == AgentApproved
+}
+
+func checkDecidedBy(decidedBy string) error {
+	if decidedBy != Agent && !IsHuman(decidedBy) {
+		return fmt.Errorf("invalid decided_by %q (want %s, %s or %s)", decidedBy, Human, AgentApproved, Agent)
+	}
+	return nil
+}
+
 // sections lists the body headings in file order.
 var sections = []string{"Question", "Ruling", "Why"}
 
 const delim = "---\n"
 
-// Parse reads a decision file. Unknown frontmatter keys, unknown or
-// duplicate sections, and text outside a section are errors.
+// Parse reads a decision file. Unknown frontmatter keys, an unknown
+// decided_by, unknown or duplicate sections, and text outside a section are
+// errors. An empty decided_by is allowed so callers can fill it in.
 func Parse(r io.Reader) (Decision, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -74,6 +94,11 @@ func Parse(r io.Reader) (Decision, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&d); err != nil && !errors.Is(err, io.EOF) {
 		return Decision{}, fmt.Errorf("parsing decision frontmatter: %w", err)
+	}
+	if d.DecidedBy != "" {
+		if err := checkDecidedBy(d.DecidedBy); err != nil {
+			return Decision{}, fmt.Errorf("parsing decision: %w", err)
+		}
 	}
 
 	text := map[string]*strings.Builder{}
@@ -118,6 +143,9 @@ func Parse(r io.Reader) (Decision, error) {
 
 // Marshal renders d in the decision file format.
 func (d Decision) Marshal() ([]byte, error) {
+	if err := checkDecidedBy(d.DecidedBy); err != nil {
+		return nil, fmt.Errorf("marshaling decision %s: %w", d.ID, err)
+	}
 	front, err := yaml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling decision %s: %w", d.ID, err)

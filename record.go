@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/waygatetech/why/internal/decision"
 	"github.com/waygatetech/why/internal/plan"
+	"github.com/waygatetech/why/internal/provenance"
 	"github.com/waygatetech/why/internal/repo"
 )
 
@@ -47,21 +49,40 @@ from a decision file on stdin.`,
 				return err
 			}
 			today := time.Now().Format(time.DateOnly)
-			for _, d := range todo {
+			ids := slices.Clone(existing)
+			for i := range todo {
+				d := &todo[i]
 				if d.Ticket == "" && d.ID == "" {
 					return errors.New("recording decision: --ticket is required")
 				}
 				if d.ID == "" {
-					d.ID = decision.NextID(existing, d.Ticket)
+					d.ID = decision.NextID(ids, d.Ticket)
 				}
 				if d.Date == "" {
 					d.Date = today
 				}
+				ids = append(ids, *d)
+			}
+			confirmed, err := confirmHuman(cmd, todo)
+			if err != nil {
+				return err
+			}
+			var gitDir string
+			if confirmed {
+				if gitDir, err = provenance.GitDir(cmd.Context(), filepath.Dir(dir)); err != nil {
+					return err
+				}
+			}
+			for _, d := range todo {
 				path, err := decision.Write(dir, d)
 				if err != nil {
 					return err
 				}
-				existing = append(existing, d)
+				if confirmed && decision.IsHuman(d.DecidedBy) {
+					if err := provenance.AddReceipt(gitDir, d.ID, path); err != nil {
+						return err
+					}
+				}
 				fmt.Fprintln(cmd.OutOrStdout(), path)
 			}
 			return nil
@@ -74,7 +95,7 @@ from a decision file on stdin.`,
 	f.StringVar(&d.Question, "question", "", "question that was decided")
 	f.StringVar(&d.Ruling, "ruling", "", "the ruling (omit to read a decision file from stdin)")
 	f.StringVar(&d.Why, "why", "", "reasoning behind the ruling")
-	f.StringVar(&d.DecidedBy, "decided-by", "agent", "who made the ruling")
+	f.StringVar(&d.DecidedBy, "decided-by", decision.Agent, "who made the ruling: human, agent-proposed-human-approved or agent; the first two require confirming on a terminal, else agent is written")
 	cmd.MarkFlagsMutuallyExclusive("from-plan", "ruling")
 	return cmd
 }
@@ -129,6 +150,34 @@ func single(cmd *cobra.Command, flags decision.Decision) ([]decision.Decision, e
 		d.DecidedBy = flags.DecidedBy
 	}
 	return []decision.Decision{d}, nil
+}
+
+// confirmHuman asks on the controlling terminal before writing human
+// provenance. Without one (agents, headless runs) every decision is
+// downgraded to agent. It reports whether a human confirmed.
+func confirmHuman(cmd *cobra.Command, ds []decision.Decision) (bool, error) {
+	if !slices.ContainsFunc(ds, func(d decision.Decision) bool { return decision.IsHuman(d.DecidedBy) }) {
+		return false, nil
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "why: no terminal to confirm human provenance; recording as %s\n", decision.Agent)
+		for i := range ds {
+			if decision.IsHuman(ds[i].DecidedBy) {
+				ds[i].DecidedBy = decision.Agent
+			}
+		}
+		return false, nil
+	}
+	defer tty.Close()
+	ok, err := provenance.Confirm(tty, ds)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, errors.New("recording decision: provenance not confirmed; nothing written")
+	}
+	return true, nil
 }
 
 // decisionsDir is <repo root>/decisions for the working directory.
