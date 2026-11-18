@@ -58,6 +58,9 @@ why record --ticket why-12 < decision.md
 # Record every decision in an approved tix plan (idempotent)
 why record --from-plan plans/why-12.md
 
+# Same, plan on stdin, recorded under another ticket, provenance verified by CI
+why record --from-plan - --ticket W-718 --provenance=ci < plan.md
+
 # Active decisions, optionally by concept; --format md for feeding to vet
 why list --concept auth
 why list --all --format md
@@ -81,6 +84,23 @@ ask:  Bash(tix approve:*)
 deny: Bash(why record:*--decided-by human*),
       Bash(why record:*--decided-by agent-proposed-human-approved*)
 ```
+
+### `--provenance=ci`: the caller's CI verifies provenance
+
+When a repo's trust root is CI rather than the tix approve hook, pass
+`--provenance=ci`. Human provenance is then kept outside the hook, and
+`--from-plan` sets `decided_by` per entry: `human` when the entry has
+`ruled_by`, `agent-proposed-human-approved` otherwise. `--decided-by` is
+rejected in that mode. Use it only when your CI checks each human decision
+against the approved plan. A repo that does not want it denies the flag:
+
+```
+deny: Bash(why record:*--provenance*)
+```
+
+Without `--provenance=ci`, `why record` behaves as above.
+
+### Receipts
 
 When a human decision is written, `why` stores a receipt (the file's hash) in
 `.git/why/approved`. `why check`, meant for the tix done hook, compares

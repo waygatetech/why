@@ -13,6 +13,7 @@ func TestRead(t *testing.T) {
 		content string
 		ticket  string
 		q       string
+		ruledBy string
 		wantErr string
 	}{
 		{
@@ -38,9 +39,16 @@ func TestRead(t *testing.T) {
 			wantErr: "unterminated frontmatter",
 		},
 		{
-			name:    "no ticket",
-			content: "---\nconcepts: [cli]\n---\n",
-			wantErr: "no ticket",
+			name:    "ruled_by",
+			content: "---\nticket: why-5\ndecisions:\n  - q: Which?\n    recommend: A\n    ruled_by: brian\n---\n",
+			ticket:  "why-5",
+			q:       "Which?",
+			ruledBy: "brian",
+		},
+		{
+			name:    "no ticket is left to the caller",
+			content: "---\ndecisions:\n  - q: Which?\n---\n",
+			q:       "Which?",
 		},
 	}
 	for _, tt := range tests {
@@ -64,6 +72,8 @@ func TestRead(t *testing.T) {
 			}
 			if len(p.Decisions) != 1 || p.Decisions[0].Q != tt.q {
 				t.Errorf("Decisions = %+v, want one with q %q", p.Decisions, tt.q)
+			} else if p.Decisions[0].RuledBy != tt.ruledBy {
+				t.Errorf("RuledBy = %q, want %q", p.Decisions[0].RuledBy, tt.ruledBy)
 			}
 		})
 	}
