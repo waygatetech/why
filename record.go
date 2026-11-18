@@ -16,7 +16,7 @@ import (
 )
 
 func newRecordCmd() *cobra.Command {
-	var fromPlan string
+	var fromPlan, prov string
 	var d decision.Decision
 	cmd := &cobra.Command{
 		Use:   "record",
@@ -24,8 +24,9 @@ func newRecordCmd() *cobra.Command {
 		Long: `Record decisions under <repo>/decisions/.
 
 --from-plan writes one decision per entry in the plan's decisions; the
-entry's recommend is the ruling. Entries already recorded for the ticket
-(same question) are skipped.
+entry's recommend is the ruling. --from-plan - reads the plan from stdin.
+--ticket overrides the plan's ticket. Entries already recorded for the
+ticket (same question) are skipped.
 
 Otherwise one decision is taken from flags, or, when --ruling is not set,
 from a decision file on stdin.
@@ -35,9 +36,22 @@ from the tix approve hook (TIX_HOOK=approve); anywhere else it is recorded as
 agent. The human gesture is the Claude Code permission prompt, so configure:
   ask:  Bash(tix approve:*)
   deny: Bash(why record:*--decided-by human*),
-        Bash(why record:*--decided-by agent-proposed-human-approved*)`,
+        Bash(why record:*--decided-by agent-proposed-human-approved*)
+
+--provenance=ci keeps human provenance outside the tix approve hook: the
+caller's CI verifies provenance. With --from-plan it sets decided_by per
+entry: human when the entry has ruled_by, else agent-proposed-human-approved.
+A repo that does not want this denies it:
+  deny: Bash(why record:*--provenance*)`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if prov != provenanceHook && prov != provenanceCI {
+				return fmt.Errorf("recording decision: invalid --provenance %q (want %s or %s)", prov, provenanceHook, provenanceCI)
+			}
+			ci := prov == provenanceCI
+			if ci && fromPlan != "" && cmd.Flags().Changed("decided-by") {
+				return errors.New("recording decision: --decided-by does not apply to --from-plan with --provenance=ci; each entry's ruled_by sets it")
+			}
 			dir, err := decisionsDir()
 			if err != nil {
 				return err
@@ -48,7 +62,7 @@ agent. The human gesture is the Claude Code permission prompt, so configure:
 			}
 			var todo []decision.Decision
 			if fromPlan != "" {
-				todo, err = fromPlanFile(fromPlan, existing, d.DecidedBy)
+				todo, err = fromPlanFile(cmd, fromPlan, d.Ticket, existing, d.DecidedBy, ci)
 			} else {
 				todo, err = single(cmd, d)
 			}
@@ -86,7 +100,7 @@ agent. The human gesture is the Claude Code permission prompt, so configure:
 					}
 				}
 			}
-			confirmed := approvedByHuman(cmd, todo)
+			confirmed := approvedByHuman(cmd, todo, ci)
 			var gitDir string
 			if confirmed {
 				if gitDir, err = provenance.GitDir(cmd.Context(), filepath.Dir(dir)); err != nil {
@@ -109,24 +123,39 @@ agent. The human gesture is the Claude Code permission prompt, so configure:
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&fromPlan, "from-plan", "", "tix plan file whose decisions to record")
-	f.StringVar(&d.Ticket, "ticket", "", "ticket the decision belongs to")
+	f.StringVar(&fromPlan, "from-plan", "", "tix plan file whose decisions to record (- for stdin)")
+	f.StringVar(&d.Ticket, "ticket", "", "ticket the decision belongs to (overrides the plan's ticket with --from-plan)")
 	f.StringSliceVar(&d.Concepts, "concept", nil, "concept the decision applies to (repeatable)")
 	f.StringVar(&d.Question, "question", "", "question that was decided")
 	f.StringVar(&d.Ruling, "ruling", "", "the ruling (omit to read a decision file from stdin)")
 	f.StringVar(&d.Why, "why", "", "reasoning behind the ruling")
 	f.StringSliceVar(&d.Supersedes, "supersedes", nil, "id of a decision this one replaces (repeatable)")
 	f.StringVar(&d.DecidedBy, "decided-by", decision.Agent, "who made the ruling: human, agent-proposed-human-approved or agent; the first two are kept only under the tix approve hook, else agent is written")
+	f.StringVar(&prov, "provenance", provenanceHook, "who verifies human provenance: hook (only the tix approve hook may write it) or ci (the caller's CI verifies it)")
 	cmd.MarkFlagsMutuallyExclusive("from-plan", "ruling")
 	return cmd
 }
 
 // fromPlanFile maps an approved plan's decisions to new Decisions, skipping
-// ones already recorded so re-approving a plan is idempotent.
-func fromPlanFile(path string, existing []decision.Decision, decidedBy string) ([]decision.Decision, error) {
-	p, err := plan.Read(path)
+// ones already recorded so re-approving a plan is idempotent. path - reads
+// stdin; a non-empty ticket overrides the plan's. With ci, decided_by comes
+// from each entry's ruled_by instead of decidedBy.
+func fromPlanFile(cmd *cobra.Command, path, ticket string, existing []decision.Decision, decidedBy string, ci bool) ([]decision.Decision, error) {
+	var p plan.Plan
+	var err error
+	if path == "-" {
+		p, err = plan.Parse(cmd.InOrStdin(), "stdin")
+	} else {
+		p, err = plan.Read(path)
+	}
 	if err != nil {
 		return nil, err
+	}
+	if ticket != "" {
+		p.Ticket = ticket
+	}
+	if p.Ticket == "" {
+		return nil, fmt.Errorf("parsing plan %s: no ticket (set ticket: or pass --ticket)", path)
 	}
 	recorded := map[string]bool{}
 	for _, d := range existing {
@@ -140,8 +169,15 @@ func fromPlanFile(path string, existing []decision.Decision, decidedBy string) (
 		if recorded[e.Q] {
 			continue
 		}
+		by := decidedBy
+		if ci {
+			by = decision.AgentApproved
+			if e.RuledBy != "" {
+				by = decision.Human
+			}
+		}
 		out = append(out, decision.Decision{
-			Ticket: p.Ticket, Concepts: concepts, DecidedBy: decidedBy,
+			Ticket: p.Ticket, Concepts: concepts, DecidedBy: by,
 			Question: e.Q, Ruling: e.Recommend, Why: e.Why, Supersedes: e.Supersedes,
 		})
 	}
@@ -176,13 +212,19 @@ func single(cmd *cobra.Command, flags decision.Decision) ([]decision.Decision, e
 	return []decision.Decision{d}, nil
 }
 
-// approvedByHuman reports whether why runs inside the tix approve hook, the
-// only place human provenance may be written; the human gesture is the
-// harness permission prompt on tix approve. Elsewhere every human decision
-// is downgraded to agent. An agent can set TIX_HOOK itself; this stops
-// accidental upgrades, not determined ones.
-func approvedByHuman(cmd *cobra.Command, ds []decision.Decision) bool {
-	if os.Getenv("TIX_HOOK") == "approve" {
+// Values of --provenance.
+const (
+	provenanceHook = "hook"
+	provenanceCI   = "ci"
+)
+
+// approvedByHuman reports whether human provenance may be written: with ci,
+// where the caller's CI verifies it, or inside the tix approve hook, where
+// the human gesture is the harness permission prompt on tix approve.
+// Elsewhere every human decision is downgraded to agent. An agent can set
+// TIX_HOOK itself; this stops accidental upgrades, not determined ones.
+func approvedByHuman(cmd *cobra.Command, ds []decision.Decision, ci bool) bool {
+	if ci || os.Getenv("TIX_HOOK") == "approve" {
 		return true
 	}
 	for i := range ds {
